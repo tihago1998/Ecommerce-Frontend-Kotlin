@@ -90,6 +90,10 @@ fun UserManagementScreen(
                     items(viewModel.users) { user ->
                         UserCard(
                             user = user,
+                            // [ERROR U6] ANTES: este parámetro no existía.
+                            // CAMBIO: se indica si la tarjeta corresponde al usuario con la sesión abierta.
+                            // POR QUÉ: permite bloquear el cambio de rol sobre uno mismo (ver UserCard).
+                            esUsuarioActual = user.Email == viewModel.currentUserEmail,
                             availableRoles = viewModel.availableRoles,
                             isUpdatingRole = viewModel.isUpdatingRole,
                             onUpdateRole = { roleId ->
@@ -139,6 +143,11 @@ fun UserManagementScreen(
 @Composable
 fun UserCard(
     user: UserProfile,
+    // [ERROR U6] ANTES: este parámetro no existía.
+    // CAMBIO: nuevo parámetro esUsuarioActual.
+    // POR QUÉ: PUT /api/users/{id}/roles REEMPLAZA todos los roles del usuario. Si el administrador
+    // se asignaba otro rol a sí mismo perdía el de Administrador y nadie quedaba para devolvérselo.
+    esUsuarioActual: Boolean,
     availableRoles: List<com.ecommerce.ecommerceapp.models.Role>,
     isUpdatingRole: Boolean,
     onUpdateRole: (Int) -> Unit,
@@ -204,12 +213,22 @@ fun UserCard(
             // Selector de nuevo rol
             ExposedDropdownMenuBox(
                 expanded = expandedRoles,
-                onExpandedChange = { expandedRoles = !expandedRoles }
+                // [ERROR U6] ANTES: onExpandedChange = { expandedRoles = !expandedRoles }
+                // CAMBIO: el menú no se abre si la tarjeta es la del propio usuario.
+                // POR QUÉ: evita que el administrador se quite su propio rol por accidente.
+                onExpandedChange = { if (!esUsuarioActual) expandedRoles = !expandedRoles }
             ) {
                 OutlinedTextField(
-                    value = "Cambiar rol",
+                    // [ERROR U6] ANTES: value = "Cambiar rol",
+                    // CAMBIO: en la tarjeta propia se muestra "No puedes cambiar tu propio rol".
+                    // POR QUÉ: explica al usuario por qué el campo está bloqueado.
+                    value = if (esUsuarioActual) "No puedes cambiar tu propio rol" else "Cambiar rol",
                     onValueChange = { },
                     readOnly = true,
+                    // [ERROR U6] ANTES: esta línea no existía (el campo siempre estaba habilitado).
+                    // CAMBIO: el campo se ve deshabilitado (gris) en la tarjeta propia.
+                    // POR QUÉ: refuerza visualmente que esa acción no está permitida.
+                    enabled = !esUsuarioActual,
                     label = { Text("Asignar rol") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedRoles) },
                     colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
