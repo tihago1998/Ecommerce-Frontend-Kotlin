@@ -58,20 +58,29 @@ interface ApiService {
     ): Response<AuthResponse>
 
     // ========== UBICACIONES ==========
+    // [ERROR 1] ANTES: suspend fun getCountries(): Response<List<Country>>
+    // CAMBIO: el tipo de respuesta pasa de List<Country> a CountriesResponse.
+    // POR QUÉ: el backend responde {"count": 5, "countries": [...]} (un objeto), no [...] (una lista).
     @GET("api/locations/countries")
-    suspend fun getCountries(): Response<List<Country>>
+    suspend fun getCountries(): Response<CountriesResponse>
 
     @POST("api/locations/countries")
     suspend fun createCountry(@Body request: CreateLocationRequest): Response<Country>
 
+    // [ERROR 1] ANTES: suspend fun getStates(...): Response<List<State>>
+    // CAMBIO: el tipo de respuesta pasa de List<State> a StatesResponse.
+    // POR QUÉ: el backend responde {"count": n, "states": [...]}.
     @GET("api/locations/states")
-    suspend fun getStates(@Query("country_id") countryId: Int? = null): Response<List<State>>
+    suspend fun getStates(@Query("country_id") countryId: Int? = null): Response<StatesResponse>
 
     @POST("api/locations/states")
     suspend fun createState(@Body request: CreateLocationRequest): Response<State>
 
+    // [ERROR 1] ANTES: suspend fun getCities(...): Response<List<City>>
+    // CAMBIO: el tipo de respuesta pasa de List<City> a CitiesResponse.
+    // POR QUÉ: el backend responde {"count": n, "cities": [...]}.
     @GET("api/locations/cities")
-    suspend fun getCities(@Query("state_id") stateId: Int? = null): Response<List<City>>
+    suspend fun getCities(@Query("state_id") stateId: Int? = null): Response<CitiesResponse>
 
     @POST("api/locations/cities")
     suspend fun createCity(@Body request: CreateLocationRequest): Response<City>
