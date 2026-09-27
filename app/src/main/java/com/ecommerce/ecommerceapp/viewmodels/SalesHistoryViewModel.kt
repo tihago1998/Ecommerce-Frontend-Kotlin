@@ -54,7 +54,11 @@ class SalesHistoryViewModel(private val sessionManager: SessionManager) : ViewMo
                         sales = salesResponse.sales
                         currentPage = page
                         totalPages = salesResponse.pagination?.total_pages ?: 1
-                        totalSales = salesResponse.total
+                        // [ERROR C7] ANTES: totalSales = salesResponse.total
+                        // CAMBIO: se lee el total desde pagination.total (o el tamaño de la lista si no viene).
+                        // POR QUÉ: el backend envía {"sales": [...], "pagination": {..., "total": n}}; la clave
+                        // "total" no existe en el primer nivel, así que el contador de pedidos mostraba 0.
+                        totalSales = salesResponse.pagination?.total ?: sales.size
                         Log.d("SALES_DEBUG", "Ventas cargadas: ${sales.size}")
                     } else {
                         if (response.code() == 404) {
@@ -87,8 +91,15 @@ class SalesHistoryViewModel(private val sessionManager: SessionManager) : ViewMo
                 if (token != null) {
                     val response = ApiClient.apiService.getSale("Bearer $token", saleId)
 
-                    if (response.isSuccessful && response.body() != null) {
-                        selectedSale = response.body()
+                    // [ERROR C6] ANTES:
+                    //     if (response.isSuccessful && response.body() != null) {
+                    //         selectedSale = response.body()
+                    // CAMBIO: se toma la venta que viene dentro de la clave "sale": response.body()?.sale
+                    // POR QUÉ: GET /api/sales/{id} responde {"sale": {...}}. Antes se asignaba el envoltorio y
+                    // el diálogo de detalle mostraba el pedido #0 sin productos ni total.
+                    val sale = response.body()?.sale
+                    if (response.isSuccessful && sale != null) {
+                        selectedSale = sale
                         showSaleDetailDialog = true
                         Log.d("SALES_DEBUG", "Detalle de venta cargado: $saleId")
                     } else {

@@ -236,10 +236,13 @@ interface ApiService {
         @Query("per_page") perPage: Int = 10
     ): Response<SalesResponse>
 
+    // [ERROR C6] ANTES: ...): Response<Sale>
+    // CAMBIO: el tipo de respuesta pasa a SaleResponse.
+    // POR QUÉ: el backend responde {"sale": {...}}; la venta está un nivel más adentro.
     @GET("api/sales/{id}")
     suspend fun getSale(
         @Header("Authorization") token: String,
         @Path("id") saleId: Int
-    ): Response<Sale>
+    ): Response<SaleResponse>
 
 }

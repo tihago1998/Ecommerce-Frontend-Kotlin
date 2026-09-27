@@ -111,20 +111,22 @@ class CartViewModel(private val sessionManager: SessionManager) : ViewModel() {
                     val response = ApiClient.apiService.addToCart("Bearer $token", request)
                     Log.d("CART_DEBUG", "Response code: ${response.code()}")
 
-                    if (response.isSuccessful && response.body() != null) {
-                        val responseBody = response.body()!!
-                        Log.d("CART_DEBUG", "AddToCart SUCCESS - Response body:")
-                        Log.d("CART_DEBUG", "- Items en respuesta: ${responseBody.items.size}")
-                        Log.d("CART_DEBUG", "- Total items: ${responseBody.total_items}")
-                        Log.d("CART_DEBUG", "- Total amount: ${responseBody.total_amount}")
-                        responseBody.items.forEach { item ->
-                            Log.d("CART_DEBUG", "  * Producto: ${item.product?.ProductName}, Cantidad: ${item.quantity}")
-                        }
-
-                        cart = responseBody
-                        cartItemsCount = cart?.total_items ?: 0
+                    // [ERROR C3] ANTES:
+                    //     if (response.isSuccessful && response.body() != null) {
+                    //         val responseBody = response.body()!!
+                    //         ... (logs de responseBody.items) ...
+                    //         cart = responseBody
+                    //         cartItemsCount = cart?.total_items ?: 0
+                    // CAMBIO: ya no se usa el cuerpo de la respuesta como carrito; se llama a loadCart().
+                    // POR QUÉ: POST /api/sales/cart/add solo responde {"message": "Producto agregado al carrito"},
+                    // SIN el carrito. Gson lo convertía en un Cart vacío (items = [], total_items = 0) y
+                    // REEMPLAZABA el carrito real: el contador del catálogo volvía a 0 y "ya en el carrito"
+                    // dejaba de marcarse, lo que podía llevar a agregar de nuevo y recibir 400 por stock.
+                    // loadCart() pide GET /api/sales/cart, que sí devuelve el carrito completo.
+                    if (response.isSuccessful) {
                         successMessage = "Producto agregado al carrito"
-                        Log.d("CART_DEBUG", "Producto agregado exitosamente. cartItemsCount actualizado a: $cartItemsCount")
+                        Log.d("CART_DEBUG", "Producto agregado. Recargando carrito real desde el backend")
+                        loadCart()
                     } else {
                         val errorBody = response.errorBody()?.string()
                         Log.e("CART_DEBUG", "Error response body: $errorBody")
@@ -169,11 +171,18 @@ class CartViewModel(private val sessionManager: SessionManager) : ViewModel() {
                         quantity = request
                     )
 
-                    if (response.isSuccessful && response.body() != null) {
-                        cart = response.body()
-                        cartItemsCount = cart?.total_items ?: 0
+                    // [ERROR C4] ANTES:
+                    //     if (response.isSuccessful && response.body() != null) {
+                    //         cart = response.body()
+                    //         cartItemsCount = cart?.total_items ?: 0
+                    // CAMBIO: se recarga el carrito real con loadCart() en lugar de usar el cuerpo de la respuesta.
+                    // POR QUÉ: PUT /api/sales/cart/update/{id} responde {"message": "...", "item": {...}}, no el
+                    // carrito. Gson lo convertía en un Cart vacío y al tocar + o - la lista del carrito
+                    // desaparecía de la pantalla aunque en el backend la cantidad sí se actualizaba.
+                    if (response.isSuccessful) {
                         successMessage = "Cantidad actualizada"
-                        Log.d("CART_DEBUG", "Cantidad actualizada en el carrito")
+                        Log.d("CART_DEBUG", "Cantidad actualizada. Recargando carrito real desde el backend")
+                        loadCart()
                     } else {
                         errorMessage = when (response.code()) {
                             404 -> "Item no encontrado en el carrito"
@@ -274,29 +283,55 @@ class CartViewModel(private val sessionManager: SessionManager) : ViewModel() {
                     val request = CheckoutRequest(DescripcionSale = checkoutDescription.trim())
                     val response = ApiClient.apiService.checkout("Bearer $token", request)
 
-                    if (response.isSuccessful && response.body() != null) {
-                        val checkoutResponse = response.body()!!
+                    // [ERROR C2] ANTES:
+                    //     if (response.isSuccessful && response.body() != null) {
+                    //         val checkoutResponse = response.body()!!
+                    //         if (checkoutResponse.isSuccess()) { ...limpiar carrito... } else { errorMessage = ... }
+                    // CAMBIO: el éxito se decide por el código HTTP (201 = pedido creado), no por si el cuerpo
+                    // se pudo leer. Además se registra el id y el total del pedido en Logcat.
+                    // POR QUÉ: el backend crea el pedido, descuenta el stock y vincula los ítems del carrito
+                    // ANTES de responder. Con el error C1 la lectura del cuerpo fallaba y la app mostraba
+                    // "Error de conexión" aunque el pedido ya existía; el carrito no se limpiaba y no se abría
+                    // la pantalla de pedido exitoso. Ahora, si el servidor dijo 201, el pedido se da por hecho.
+                    if (response.isSuccessful) {
+                        val checkoutResponse = response.body()
 
-                        if (checkoutResponse.isSuccess()) {
-                            // Carrito se vacía después del checkout exitoso
-                            cart = Cart(items = emptyList(), total_items = 0, total_amount = 0.0)
-                            cartItemsCount = 0
-                            lastCompletedSale = checkoutResponse.sale
+                        // Carrito se vacía después del checkout exitoso
+                        cart = Cart(items = emptyList(), total_items = 0, total_amount = 0.0)
+                        cartItemsCount = 0
+                        // [ERROR C2] ANTES: lastCompletedSale = checkoutResponse.sale
+                        // CAMBIO: si por algún motivo el cuerpo no trae la venta, se usa una venta mínima.
+                        // POR QUÉ: CartScreen navega a "Pedido exitoso" cuando lastCompletedSale deja de ser null;
+                        // si quedaba null, el usuario nunca veía la confirmación y reintentaba el pedido.
+                        lastCompletedSale = checkoutResponse?.sale ?: Sale(DescripcionSale = request.DescripcionSale)
 
-                            successMessage = "¡Pedido realizado exitosamente!"
-                            checkoutDescription = ""
-                            Log.d("CART_DEBUG", "Checkout exitoso: ${checkoutResponse.sale_id}")
-                        } else {
-                            errorMessage = checkoutResponse.message ?: "Error al procesar el pedido"
-                        }
+                        successMessage = "¡Pedido realizado exitosamente!"
+                        checkoutDescription = ""
+                        // [ERROR C2] ANTES: Log.d("CART_DEBUG", "Checkout exitoso: ${checkoutResponse.sale_id}")
+                        // CAMBIO / POR QUÉ: el backend no envía "sale_id" (siempre salía null); el id está en sale.id_Sale.
+                        Log.d("CART_DEBUG", "Checkout exitoso: pedido #${lastCompletedSale?.id_Sale} total=${lastCompletedSale?.TotalSale}")
                     } else {
+                        // [ERROR C2] ANTES:
+                        //     errorMessage = when (response.code()) {
+                        //         400 -> "Datos de pedido inválidos"
+                        //         404 -> "Carrito vacío o no encontrado"
+                        //         409 -> "Stock insuficiente para algunos productos"
+                        //         else -> "Error al procesar el pedido"
+                        //     }
+                        // CAMBIO: se muestra el mensaje real que envía el backend en {"error": "..."} y después se
+                        // recarga el carrito desde el servidor.
+                        // POR QUÉ: el backend responde 400 tanto para "Carrito vacío" como para "Stock insuficiente
+                        // para X"; ambos se mostraban como "Datos de pedido inválidos". Cuando el pedido ya se había
+                        // creado (por C1) y el usuario reintentaba, recibía un mensaje que no explicaba nada.
+                        // Recargar el carrito deja la pantalla igual a lo que hay realmente en el backend.
+                        val mensajeServidor = leerErrorDelServidor(response.errorBody()?.string())
                         errorMessage = when (response.code()) {
-                            400 -> "Datos de pedido inválidos"
-                            404 -> "Carrito vacío o no encontrado"
-                            409 -> "Stock insuficiente para algunos productos"
-                            else -> "Error al procesar el pedido"
+                            400 -> mensajeServidor ?: "No se pudo procesar el pedido"
+                            401 -> "Tu sesión expiró. Inicia sesión de nuevo"
+                            else -> "Error al procesar el pedido (HTTP ${response.code()})"
                         }
-                        Log.e("CART_DEBUG", "Error during checkout: ${response.code()}")
+                        Log.e("CART_DEBUG", "Error during checkout: ${response.code()} - $mensajeServidor")
+                        loadCart()
                     }
                 } else {
                     errorMessage = "Sesión expirada"
@@ -304,10 +339,25 @@ class CartViewModel(private val sessionManager: SessionManager) : ViewModel() {
             } catch (e: Exception) {
                 errorMessage = "Error de conexión: ${e.message}"
                 Log.e("CART_DEBUG", "Exception during checkout", e)
+                // [ERROR C2] ANTES: esta línea no existía.
+                // CAMBIO: tras un fallo de red se recarga el carrito desde el backend.
+                // POR QUÉ: si la respuesta se perdió pero el pedido sí se creó, el carrito del servidor ya está
+                // vacío; recargarlo evita que el usuario vea productos que ya compró e intente pagarlos otra vez.
+                loadCart()
             } finally {
                 isCheckingOut = false
             }
         }
+    }
+
+    // [ERROR C2] ANTES: esta función no existía.
+    // CAMBIO: extrae el texto de {"error": "..."} del cuerpo de error del backend.
+    // POR QUÉ: el backend explica el motivo exacto del 400 ("Carrito vacío", "Stock insuficiente para X");
+    // mostrarlo es más útil que un mensaje genérico.
+    private fun leerErrorDelServidor(cuerpo: String?): String? = try {
+        cuerpo?.let { org.json.JSONObject(it).optString("error").takeIf { msg -> msg.isNotBlank() } }
+    } catch (e: Exception) {
+        null
     }
 
     // Funciones de utilidad
