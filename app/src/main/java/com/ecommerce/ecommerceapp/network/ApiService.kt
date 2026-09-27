@@ -14,14 +14,20 @@ interface ApiService {
     suspend fun register(@Body user: User): Response<RegisterResponse>
 
     // ========== PERFIL DE USUARIO ==========
+    // [ERROR P1] ANTES: suspend fun getProfile(...): Response<UserProfile>
+    // CAMBIO: el tipo de respuesta pasa a UserResponse.
+    // POR QUÉ: el backend responde {"user": {...}}; los datos del usuario están un nivel más adentro.
     @GET("api/users/profile")
-    suspend fun getProfile(@Header("Authorization") token: String): Response<UserProfile>
+    suspend fun getProfile(@Header("Authorization") token: String): Response<UserResponse>
 
+    // [ERROR P1] ANTES: ...): Response<UserProfile>
+    // CAMBIO: el tipo de respuesta pasa a UserResponse.
+    // POR QUÉ: el backend responde {"message": "...", "user": {...}}.
     @PUT("api/users/profile")
     suspend fun updateProfile(
         @Header("Authorization") token: String,
         @Body profile: UpdateProfileRequest
-    ): Response<UserProfile>
+    ): Response<UserResponse>
 
     @PUT("api/auth/change-password")
     suspend fun changePassword(
@@ -85,8 +91,12 @@ interface ApiService {
     @POST("api/locations/cities")
     suspend fun createCity(@Body request: CreateLocationRequest): Response<City>
 
+    // [ERROR U1] ANTES: suspend fun getRoles(): Response<List<Role>>
+    // CAMBIO: el tipo de respuesta pasa de List<Role> a RolesResponse.
+    // POR QUÉ: Retrofit/Gson esperaba un arreglo "[" y el backend envía un objeto "{".
+    // Gson lanzaba "Expected BEGIN_ARRAY but was BEGIN_OBJECT" y el desplegable de roles quedaba vacío.
     @GET("api/auth/roles")
-    suspend fun getRoles(): Response<List<Role>>
+    suspend fun getRoles(): Response<RolesResponse>
 
 
     // ========== GESTIÓN DE CATEGORÍAS ==========
