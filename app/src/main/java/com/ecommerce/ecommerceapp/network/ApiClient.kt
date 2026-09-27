@@ -10,9 +10,12 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
 
-    private const val BASE_URL = "https://ecommerce-api-python.onrender.com/"
-    //private const val BASE_URL = "http://192.168.1.44:5050/"
-    //private const val BASE_URL = "http://127.0.0.1:5050/"
+    // Celular físico: IP del PC en la red Wi-Fi (ipconfig). El celular y el PC deben estar en la misma red.
+    //private const val BASE_URL = "http://192.168.0.100:5050/"
+    // Emulador: 10.0.2.2 es el "localhost" del PC visto desde el emulador
+    private const val BASE_URL = "http://10.0.2.2:5050/"
+    // Backend desplegado
+    //private const val BASE_URL = "https://ecommerce-api-python.onrender.com/"
 
 
 
